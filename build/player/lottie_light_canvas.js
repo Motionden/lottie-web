@@ -2752,7 +2752,7 @@ var TransformPropertyFactory = (function () {
     }
   }
   function processKeys(forceRender) {
-    if (this.elem.globalData.frameId === this.frameId) {
+    if (this.elem.globalData.frameId === this.frameId && !this.elem._isFirstFrame) {
       return;
     }
     if (this._isDirty) {
@@ -4277,6 +4277,7 @@ RepeaterModifier.prototype.processShapes = function (_isFirstFrame) {
   var i;
   var dir;
   var cont;
+  var hasReloaded = false;
   if (this._mdf || _isFirstFrame) {
     var copies = Math.ceil(this.c.v);
     if (this._groups.length < copies) {
@@ -4294,6 +4295,7 @@ RepeaterModifier.prototype.processShapes = function (_isFirstFrame) {
         this._currentCopies += 1;
       }
       this.elem.reloadShapes();
+      hasReloaded = true;
     }
     cont = 0;
     var renderFlag;
@@ -4386,6 +4388,7 @@ RepeaterModifier.prototype.processShapes = function (_isFirstFrame) {
       i += dir;
     }
   }
+  return hasReloaded;
 };
 
 RepeaterModifier.prototype.addShape = function () {};
@@ -4849,14 +4852,16 @@ var filtersFactory = (function () {
   ob.createFilter = createFilter;
   ob.createAlphaToLuminanceFilter = createAlphaToLuminanceFilter;
 
-  function createFilter(filId) {
+  function createFilter(filId, skipCoordinates) {
     var fil = createNS('filter');
     fil.setAttribute('id', filId);
-    fil.setAttribute('filterUnits', 'objectBoundingBox');
-    fil.setAttribute('x', '0%');
-    fil.setAttribute('y', '0%');
-    fil.setAttribute('width', '100%');
-    fil.setAttribute('height', '100%');
+    if (skipCoordinates !== true) {
+      fil.setAttribute('filterUnits', 'objectBoundingBox');
+      fil.setAttribute('x', '0%');
+      fil.setAttribute('y', '0%');
+      fil.setAttribute('width', '100%');
+      fil.setAttribute('height', '100%');
+    }
     return fil;
   }
 
@@ -6056,6 +6061,9 @@ var TextSelectorProp = (function () {
       if (this._currentTextLength !== this.elem.textProperty.currentData.l.length) {
         this.getValue();
       }
+      if (this._currentTotalChars !== this.data.totalChars) {
+        this.getValue();
+      }
       // var easer = bez.getEasingCurve(this.ne.v/100,0,1-this.xe.v/100,1);
       var x1 = 0;
       var y1 = 0;
@@ -6145,6 +6153,7 @@ var TextSelectorProp = (function () {
         this.e.v = this._currentTextLength;
       }
       var divisor = this.data.r === 2 ? 1 : 100 / this.data.totalChars;
+      this._currentTotalChars = this.data.totalChars;
       var o = this.o.v / divisor;
       var s = this.s.v / divisor + o;
       var e = (this.e.v / divisor) + o;
@@ -8096,8 +8105,14 @@ IShapeElement.prototype = {
     }
 
     len = this.shapeModifiers.length;
+    var shouldBreakProcess;
     for (i = len - 1; i >= 0; i -= 1) {
-      this.shapeModifiers[i].processShapes(this._isFirstFrame);
+      shouldBreakProcess = this.shapeModifiers[i].processShapes(this._isFirstFrame);
+      // workaround to fix cases where a repeater resets the shape so the following processes get called twice
+      // TODO: find a better solution for this
+      if (shouldBreakProcess) {
+        break;
+      }
     }
   },
   lcEnum: {
